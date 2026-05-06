@@ -20,6 +20,8 @@ interface ListPageProps {
   filterCase: string
   filterGenres: string[]
   filterTags: string[]
+  filterTagsExcluded: string[]
+  filterTagsMode: 'or' | 'and'
   sortBy: SortKey
   viewMode: ViewMode
   showFilters: boolean
@@ -27,10 +29,13 @@ interface ListPageProps {
   onFilterCaseChange: (v: string) => void
   onFilterGenresChange: (ids: string[]) => void
   onFilterTagsChange: (ids: string[]) => void
+  onFilterTagsExcludedChange: (ids: string[]) => void
+  onFilterTagsModeChange: (mode: 'or' | 'and') => void
   onSortChange: (v: SortKey) => void
   onViewModeChange: (v: ViewMode) => void
   onToggleFilters: () => void
   onResetFilters: () => void
+  onResetAll: () => void
   onSelectBook: (id: string) => void
   onNewBook: () => void
   onSettings: () => void
@@ -43,9 +48,11 @@ interface ListPageProps {
 
 export function ListPage({
   books, cases, genres, tags, images,
-  searchQuery, filterCase, filterGenres, filterTags, sortBy, viewMode, showFilters,
+  searchQuery, filterCase, filterGenres, filterTags, filterTagsExcluded, filterTagsMode,
+  sortBy, viewMode, showFilters,
   onSearchChange, onFilterCaseChange, onFilterGenresChange, onFilterTagsChange,
-  onSortChange, onViewModeChange, onToggleFilters, onResetFilters,
+  onFilterTagsExcludedChange, onFilterTagsModeChange,
+  onSortChange, onViewModeChange, onToggleFilters, onResetFilters, onResetAll,
   onSelectBook, onNewBook, onSettings, onBatchDelete, onBatchAddTag, onBatchAddGenre, restoreScrollY, hasUnexportedChanges,
 }: ListPageProps) {
   const [selectMode, setSelectMode] = useState(false)
@@ -56,7 +63,6 @@ export function ListPage({
   const [isTagging, setIsTagging] = useState(false)
   const [showGenrePicker, setShowGenrePicker] = useState(false)
   const [isGenring, setIsGenring] = useState(false)
-  const [filterTagsMode, setFilterTagsMode] = useState<'or' | 'and'>('or')
 
   useEffect(() => {
     if (restoreScrollY) window.scrollTo({ top: restoreScrollY, behavior: 'instant' })
@@ -82,6 +88,9 @@ export function ListPage({
       else if (filterTagsMode === 'and') result = result.filter((b) => filterTags.every((t) => (b.tags ?? []).includes(t)))
       else result = result.filter((b) => (b.tags ?? []).some((t) => filterTags.includes(t)))
     }
+    if (filterTagsExcluded.length > 0) {
+      result = result.filter((b) => !(b.tags ?? []).some((t) => filterTagsExcluded.includes(t)))
+    }
 
     const [field, dir] = sortBy.split('_')
     result.sort((a, b) => {
@@ -96,14 +105,28 @@ export function ListPage({
       return 0
     })
     return result
-  }, [books, searchQuery, filterCase, filterGenres, filterTags, filterTagsMode, sortBy])
+  }, [books, searchQuery, filterCase, filterGenres, filterTags, filterTagsExcluded, filterTagsMode, sortBy])
 
-  const activeFilterCount = (filterCase ? 1 : 0) + (filterGenres.length > 0 ? 1 : 0) + (filterTags.length > 0 ? 1 : 0)
+  const activeFilterCount = (filterCase ? 1 : 0) + (filterGenres.length > 0 ? 1 : 0) +
+    (filterTags.length > 0 ? 1 : 0) + (filterTagsExcluded.length > 0 ? 1 : 0)
 
   const toggleGenre = (id: string) =>
     onFilterGenresChange(filterGenres.includes(id) ? filterGenres.filter((x) => x !== id) : [...filterGenres, id])
-  const toggleTag = (id: string) =>
-    onFilterTagsChange(filterTags.includes(id) ? filterTags.filter((x) => x !== id) : [...filterTags, id])
+  // 3-state cycle: unselected → include → exclude → unselected
+  const cycleTag = (id: string) => {
+    if (id === '__none__') {
+      onFilterTagsChange(filterTags.includes(id) ? filterTags.filter((x) => x !== id) : [...filterTags, id])
+      return
+    }
+    if (filterTags.includes(id)) {
+      onFilterTagsChange(filterTags.filter((x) => x !== id))
+      onFilterTagsExcludedChange([...filterTagsExcluded, id])
+    } else if (filterTagsExcluded.includes(id)) {
+      onFilterTagsExcludedChange(filterTagsExcluded.filter((x) => x !== id))
+    } else {
+      onFilterTagsChange([...filterTags, id])
+    }
+  }
 
   const enterSelectMode = () => { setSelectMode(true); setSelectedIds(new Set()) }
   const exitSelectMode  = () => { setSelectMode(false); setSelectedIds(new Set()) }
@@ -174,7 +197,11 @@ export function ListPage({
           </>
         ) : (
           <>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div
+              onClick={onResetAll}
+              style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}
+              title="一覧をリセット"
+            >
               <BookOpen size={22} style={{ color: theme.accent }} />
               <span style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 22, fontWeight: 700, letterSpacing: 1 }}>
                 Bibliotheca
@@ -285,10 +312,10 @@ export function ListPage({
               </div>
             </div>
             <div style={{ marginBottom: 6 }}>
-              <div style={{ fontSize: 11, color: theme.textDim, marginBottom: 6, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ fontSize: 11, color: theme.textDim, marginBottom: 6, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 タグ
                 <span
-                  onClick={() => setFilterTagsMode((m) => m === 'or' ? 'and' : 'or')}
+                  onClick={() => onFilterTagsModeChange(filterTagsMode === 'or' ? 'and' : 'or')}
                   style={{
                     cursor: 'pointer', fontSize: 10, padding: '1px 7px', borderRadius: 10, fontWeight: 600,
                     background: filterTagsMode === 'and' ? theme.accent : theme.bgInput,
@@ -299,10 +326,20 @@ export function ListPage({
                 >
                   {filterTagsMode.toUpperCase()}
                 </span>
+                <span style={{ fontSize: 10, color: theme.textMuted }}>
+                  クリックで「含む→除外→解除」切替
+                </span>
               </div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                <Chip label="(なし)" selected={filterTags.includes('__none__')} onClick={() => toggleTag('__none__')} />
-                {tags.map((t) => <Chip key={t.id} label={t.name} selected={filterTags.includes(t.id)} onClick={() => toggleTag(t.id)} />)}
+                <Chip label="(なし)" selected={filterTags.includes('__none__')} onClick={() => cycleTag('__none__')} />
+                {tags.map((t) => (
+                  <Chip
+                    key={t.id} label={t.name}
+                    selected={filterTags.includes(t.id)}
+                    excluded={filterTagsExcluded.includes(t.id)}
+                    onClick={() => cycleTag(t.id)}
+                  />
+                ))}
               </div>
             </div>
             {activeFilterCount > 0 && (

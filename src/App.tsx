@@ -42,6 +42,8 @@ export default function App() {
   const [filterCase, setFilterCase] = useState('')
   const [filterGenres, setFilterGenres] = useState<string[]>([])
   const [filterTags, setFilterTags] = useState<string[]>([])
+  const [filterTagsExcluded, setFilterTagsExcluded] = useState<string[]>([])
+  const [filterTagsMode, setFilterTagsMode] = useState<'or' | 'and'>('or')
   const [sortBy, setSortBy] = useState<SortKey>('createdAt_desc')
   const [viewMode, setViewMode] = useState<ViewMode>('grid')
   const [showFilters, setShowFilters] = useState(false)
@@ -127,15 +129,21 @@ export default function App() {
         <ListPage
           books={books} cases={cases} genres={genres} tags={tags} images={images}
           searchQuery={searchQuery} filterCase={filterCase} filterGenres={filterGenres}
-          filterTags={filterTags} sortBy={sortBy} viewMode={viewMode} showFilters={showFilters}
+          filterTags={filterTags} filterTagsExcluded={filterTagsExcluded} filterTagsMode={filterTagsMode}
+          sortBy={sortBy} viewMode={viewMode} showFilters={showFilters}
           onSearchChange={setSearchQuery}
           onFilterCaseChange={setFilterCase}
           onFilterGenresChange={setFilterGenres}
           onFilterTagsChange={setFilterTags}
+          onFilterTagsExcludedChange={setFilterTagsExcluded}
+          onFilterTagsModeChange={setFilterTagsMode}
           onSortChange={setSortBy}
           onViewModeChange={setViewMode}
           onToggleFilters={() => setShowFilters((v) => !v)}
-          onResetFilters={() => { setFilterCase(''); setFilterGenres([]); setFilterTags([]) }}
+          onResetFilters={() => { setFilterCase(''); setFilterGenres([]); setFilterTags([]); setFilterTagsExcluded([]) }}
+          onResetAll={() => {
+            setSearchQuery(''); setFilterCase(''); setFilterGenres([]); setFilterTags([]); setFilterTagsExcluded([])
+          }}
           onSelectBook={(id) => { listScrollY.current = window.scrollY; setSelectedBookId(id); setPage('detail') }}
           onNewBook={() => { listScrollY.current = window.scrollY; setEditingBook(null); setPage('form') }}
           onSettings={() => { listScrollY.current = window.scrollY; setPage('settings') }}
