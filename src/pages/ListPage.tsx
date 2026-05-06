@@ -7,6 +7,7 @@ import { BookCardGrid } from '../components/BookCardGrid'
 import { BookCardList } from '../components/BookCardList'
 import { EmptyState } from '../components/EmptyState'
 import { Modal } from '../components/Modal'
+import { BatchPickerModal } from '../components/BatchPickerModal'
 import type { Book, Case, Genre, Tag, SortKey, ViewMode } from '../types'
 
 interface ListPageProps {
@@ -384,71 +385,19 @@ export function ListPage({
         </div>
       )}
 
-      {/* Genre picker modal */}
-      <Modal open={showGenrePicker} onClose={() => setShowGenrePicker(false)} title="ジャンルを一括付与" width={360}>
-        <p style={{ fontSize: 13, color: theme.textDim, marginBottom: 14 }}>
-          選択中の {selectedIds.size} 冊に付与するジャンルを選んでください。<br />
-          すでに付いているものはスキップします。
-        </p>
-        {genres.length === 0 ? (
-          <p style={{ fontSize: 13, color: theme.textMuted }}>ジャンルが登録されていません。設定画面から追加してください。</p>
-        ) : (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
-            {genres.map((g) => (
-              <button
-                key={g.id}
-                disabled={isGenring}
-                onClick={() => handleApplyGenre(g.id)}
-                style={{
-                  background: theme.accentSoft, border: `1px solid ${theme.accent}44`,
-                  borderRadius: 20, padding: '6px 14px', color: theme.accent,
-                  fontSize: 13, cursor: isGenring ? 'default' : 'pointer',
-                  fontFamily: "'Noto Sans JP', sans-serif", opacity: isGenring ? 0.6 : 1,
-                  transition: 'opacity 0.15s',
-                }}
-              >
-                {g.name}
-              </button>
-            ))}
-          </div>
-        )}
-        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-          <Btn variant="ghost" onClick={() => setShowGenrePicker(false)}>閉じる</Btn>
-        </div>
-      </Modal>
+      <BatchPickerModal
+        open={showGenrePicker} onClose={() => setShowGenrePicker(false)}
+        title="ジャンルを一括付与" itemLabel="ジャンル"
+        selectedCount={selectedIds.size} items={genres}
+        isBusy={isGenring} onSelect={handleApplyGenre}
+      />
 
-      {/* Tag picker modal */}
-      <Modal open={showTagPicker} onClose={() => setShowTagPicker(false)} title="タグを一括付与" width={360}>
-        <p style={{ fontSize: 13, color: theme.textDim, marginBottom: 14 }}>
-          選択中の {selectedIds.size} 冊に付与するタグを選んでください。<br />
-          すでに付いているものはスキップします。
-        </p>
-        {tags.length === 0 ? (
-          <p style={{ fontSize: 13, color: theme.textMuted }}>タグが登録されていません。設定画面から追加してください。</p>
-        ) : (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
-            {tags.map((t) => (
-              <button
-                key={t.id}
-                disabled={isTagging}
-                onClick={() => handleApplyTag(t.id)}
-                style={{
-                  background: theme.accentSoft, border: `1px solid ${theme.accent}44`,
-                  borderRadius: 20, padding: '6px 14px', color: theme.accent,
-                  fontSize: 13, cursor: isTagging ? 'default' : 'pointer',
-                  fontFamily: "'Noto Sans JP', sans-serif", opacity: isTagging ? 0.6 : 1,
-                  transition: 'opacity 0.15s',
-                }}
-              >
-                {t.name}
-              </button>
-            ))}
-          </div>
-        )}
-        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-          <Btn variant="ghost" onClick={() => setShowTagPicker(false)}>閉じる</Btn>
-        </div>
-      </Modal>
+      <BatchPickerModal
+        open={showTagPicker} onClose={() => setShowTagPicker(false)}
+        title="タグを一括付与" itemLabel="タグ"
+        selectedCount={selectedIds.size} items={tags}
+        isBusy={isTagging} onSelect={handleApplyTag}
+      />
 
       {/* Batch delete confirmation */}
       <Modal open={confirmDelete} onClose={() => setConfirmDelete(false)} title="一括削除の確認" width={360}>
