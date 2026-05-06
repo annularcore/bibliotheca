@@ -1,13 +1,12 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { bookRepository } from './repositories/bookRepository'
 import { caseRepository } from './repositories/caseRepository'
 import { genreRepository } from './repositories/genreRepository'
 import { tagRepository } from './repositories/tagRepository'
-import { compressImage, setBookImage } from './utils/image'
-import { exportAsZip, importFile } from './utils/backup'
-import { generateId, now } from './utils/id'
+import { now } from './utils/id'
 import { useMasters } from './hooks/useMasters'
 import { useBooks } from './hooks/useBooks'
+import { useBackup } from './hooks/useBackup'
 import { ListPage } from './pages/ListPage'
 import { DetailPage } from './pages/DetailPage'
 import { FormPage } from './pages/FormPage'
@@ -33,7 +32,7 @@ export default function App() {
     handleAddTag, handleRenameTag } = masters
 
   const booksHook = useBooks(showToast)
-  const { books, images, setBooks, setImages, loadBooksAndImages,
+  const { books, images, loadBooksAndImages, appendBooksAndImages,
     handleSaveBook: saveBook, handleDeleteBook: deleteBook,
     handleBatchDelete, handleBatchAddGenre, handleBatchAddTag,
     cleanupBookField, cleanupBookArrayField } = booksHook
@@ -49,9 +48,6 @@ export default function App() {
 
   const [selectedBookId, setSelectedBookId] = useState<string | null>(null)
   const [editingBook, setEditingBook] = useState<Book | null>(null)
-  const [exportStatus, setExportStatus] = useState<string | null>(null)
-  const [lastExportedAt, setLastExportedAt] = useState(() => localStorage.getItem('lastExportedAt') ?? '')
-  const [folderImportStatus, setFolderImportStatus] = useState<string | null>(null)
 
   const initialLoadDone = useRef(false)
   const listScrollY = useRef(0)
@@ -79,6 +75,14 @@ export default function App() {
     }
   }, [loadAll])
 
+  const backup = useBackup({
+    showToast, onReload: loadAll,
+    books, cases, genres, tags,
+    handleAddCase, appendBooksAndImages,
+  })
+  const { exportStatus, folderImportStatus, hasUnexportedChanges,
+    handleExport, handleImport, handleFolderImport } = backup
+
   // ── Book handlers (wrapping useBooks with navigation) ──────
   const handleSaveBook = async (bookData: Book, imageData: string | null | undefined, continueAdding: boolean) => {
     await saveBook(bookData, imageData)
@@ -104,99 +108,6 @@ export default function App() {
     await masters.handleDeleteTag(id)
     cleanupBookArrayField('tags', id)
   }
-
-  // ── Export / Import ──────────────────────────────────────────
-  const handleExport = async () => {
-    try {
-      setExportStatus('準備中…')
-      const blob = await exportAsZip((msg) => setExportStatus(msg))
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      const date = new Date().toISOString().slice(0, 10).replace(/-/g, '')
-      a.href = url
-      a.download = `bibliotheca_backup_${date}.zip`
-      a.click()
-      URL.revokeObjectURL(url)
-      const exportedAt = new Date().toISOString()
-      localStorage.setItem('lastExportedAt', exportedAt)
-      setLastExportedAt(exportedAt)
-      setExportStatus(null)
-      showToast('バックアップをダウンロードしました')
-    } catch (e) {
-      setExportStatus(null)
-      showToast('エクスポート失敗: ' + (e as Error).message, 'error')
-    }
-  }
-
-  const handleImport = async (file: File) => {
-    try {
-      const result = await importFile(file)
-      await loadAll()
-      const exportedAt = new Date().toISOString()
-      localStorage.setItem('lastExportedAt', exportedAt)
-      setLastExportedAt(exportedAt)
-      showToast(`インポート完了（書籍: +${result.books.added}, 更新${result.books.overwritten}件）`)
-    } catch (e) {
-      showToast('インポート失敗: ' + (e as Error).message, 'error')
-    }
-  }
-
-  // ── Folder bulk import ──────────────────────────────────────
-  const handleFolderImport = async (files: FileList) => {
-    if (files.length === 0) return
-
-    const allFiles = Array.from(files)
-    const firstRelPath = (allFiles[0] as any).webkitRelativePath as string
-    const folderName = firstRelPath.split('/')[0]
-
-    // Direct children only, image files only
-    const imageFiles = allFiles.filter((f) => {
-      const parts = ((f as any).webkitRelativePath as string).split('/')
-      return parts.length === 2 && f.type.startsWith('image/')
-    })
-
-    if (imageFiles.length === 0) {
-      showToast('対象の画像ファイルが見つかりませんでした', 'error')
-      return
-    }
-
-    // Find or create the case matching folder name
-    let targetCase = cases.find((c) => c.name === folderName)
-    if (!targetCase) targetCase = await handleAddCase(folderName)
-
-    const newBooks: Book[] = []
-    const newImages: Record<string, string> = {}
-
-    for (let i = 0; i < imageFiles.length; i++) {
-      setFolderImportStatus(`処理中… (${i + 1}/${imageFiles.length})`)
-      const compressed = await compressImage(imageFiles[i])
-      const id = generateId()
-      const book: Book = {
-        id, title: '(無題)', author: null, genres: [], tags: [],
-        caseId: targetCase!.id, caseLabel: null, publishedDate: null, note: null,
-        createdAt: now(), updatedAt: now(),
-      }
-      await bookRepository.save(book)
-      await setBookImage(id, compressed)
-      newBooks.push(book)
-      newImages[id] = compressed
-    }
-
-    setBooks((prev) => [...prev, ...newBooks])
-    setImages((prev) => ({ ...prev, ...newImages }))
-    setFolderImportStatus(null)
-    showToast(`${imageFiles.length}冊を「${folderName}」ケースに登録しました`)
-  }
-
-  const hasUnexportedChanges = useMemo(() => {
-    const allItems = [...books, ...cases, ...genres, ...tags] as { updatedAt?: string; createdAt?: string }[]
-    if (allItems.length === 0) return false
-    const lastChangedAt = allItems.reduce((max, item) => {
-      const t = item.updatedAt ?? item.createdAt ?? ''
-      return t > max ? t : max
-    }, '')
-    return !lastExportedAt || lastChangedAt > lastExportedAt
-  }, [books, cases, genres, tags, lastExportedAt])
 
   // ── Render ──────────────────────────────────────────────────
   if (loading) {

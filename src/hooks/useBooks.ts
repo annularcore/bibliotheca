@@ -30,6 +30,11 @@ export function useBooks(showToast: ShowToast) {
     await loadImagesProgressively(b)
   }, [loadImagesProgressively])
 
+  const appendBooksAndImages = useCallback((newBooks: Book[], newImages: Record<string, string>) => {
+    setBooks((prev) => [...prev, ...newBooks])
+    setImages((prev) => ({ ...prev, ...newImages }))
+  }, [])
+
   const handleSaveBook = async (bookData: Book, imageData: string | null | undefined) => {
     await bookRepository.save(bookData)
     if (imageData !== undefined) {
@@ -102,8 +107,8 @@ export function useBooks(showToast: ShowToast) {
   }
 
   return {
-    books, images, setBooks, setImages,
-    loadBooksAndImages,
+    books, images,
+    loadBooksAndImages, appendBooksAndImages,
     handleSaveBook, handleDeleteBook, handleBatchDelete,
     handleBatchAddGenre, handleBatchAddTag,
     cleanupBookField, cleanupBookArrayField,
