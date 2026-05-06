@@ -3,7 +3,7 @@ import { normalizePublishedDate } from '../utils/date'
 import { ChevronLeft, Camera, X, Plus, Save, Image as ImageIcon } from 'lucide-react'
 import { theme } from '../theme'
 import { Btn } from '../components/Btn'
-import { Input } from '../components/Input'
+import { Input, inputBase } from '../components/Input'
 import { MultiSelectDropdown } from '../components/MultiSelectDropdown'
 import { compressImage } from '../utils/image'
 import { generateId, now } from '../utils/id'
@@ -80,11 +80,7 @@ export function FormPage({ book, cases, genres, tags, image: existingImage, onSa
     setShowNewCase(false)
   }
 
-  const inputStyle: React.CSSProperties = {
-    background: theme.bgInput, border: `1px solid ${theme.border}`,
-    borderRadius: 8, padding: '8px 10px', color: theme.text, fontSize: 13,
-    fontFamily: "'Noto Sans JP', sans-serif", outline: 'none', boxSizing: 'border-box',
-  }
+  const inputStyle: React.CSSProperties = { ...inputBase, padding: '8px 10px', fontSize: 13 }
 
   return (
     <>

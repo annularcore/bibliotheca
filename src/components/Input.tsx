@@ -13,7 +13,7 @@ interface InputProps {
   onFileChange?: (e: React.ChangeEvent<HTMLInputElement>) => void
 }
 
-const inputBase: React.CSSProperties = {
+export const inputBase: React.CSSProperties = {
   width: '100%', background: theme.bgInput, border: `1px solid ${theme.border}`,
   borderRadius: 8, padding: '10px 14px', color: theme.text,
   fontSize: 14, fontFamily: "'Noto Sans JP', sans-serif", outline: 'none',
