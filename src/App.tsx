@@ -3,10 +3,11 @@ import { bookRepository } from './repositories/bookRepository'
 import { caseRepository } from './repositories/caseRepository'
 import { genreRepository } from './repositories/genreRepository'
 import { tagRepository } from './repositories/tagRepository'
-import { getBookImage, setBookImage, deleteBookImage, compressImage } from './utils/image'
+import { compressImage, setBookImage } from './utils/image'
 import { exportAsZip, importFile } from './utils/backup'
 import { generateId, now } from './utils/id'
 import { useMasters } from './hooks/useMasters'
+import { useBooks } from './hooks/useBooks'
 import { ListPage } from './pages/ListPage'
 import { DetailPage } from './pages/DetailPage'
 import { FormPage } from './pages/FormPage'
@@ -17,15 +18,25 @@ import type { Book, Page, SortKey, ViewMode, ToastState } from './types'
 
 export default function App() {
   const [page, setPage] = useState<Page>('list')
-  const [books, setBooks] = useState<Book[]>([])
+  const [loading, setLoading] = useState(true)
+  const [toast, setToast] = useState<ToastState>({ visible: false, message: '', type: 'success' })
+
+  const showToast = (message: string, type: ToastState['type'] = 'success') => {
+    setToast({ visible: true, message, type })
+    setTimeout(() => setToast((t) => ({ ...t, visible: false })), 2500)
+  }
+
   const masters = useMasters()
   const { cases, genres, tags, setAllMasters,
     handleAddCase, handleRenameCase,
     handleAddGenre, handleRenameGenre,
     handleAddTag, handleRenameTag } = masters
-  const [images, setImages] = useState<Record<string, string>>({})
-  const [loading, setLoading] = useState(true)
-  const [toast, setToast] = useState<ToastState>({ visible: false, message: '', type: 'success' })
+
+  const booksHook = useBooks(showToast)
+  const { books, images, setBooks, setImages, loadBooksAndImages,
+    handleSaveBook: saveBook, handleDeleteBook: deleteBook,
+    handleBatchDelete, handleBatchAddGenre, handleBatchAddTag,
+    cleanupBookField, cleanupBookArrayField } = booksHook
 
   // List page state (kept in App to preserve across navigation)
   const [searchQuery, setSearchQuery] = useState('')
@@ -45,40 +56,20 @@ export default function App() {
   const initialLoadDone = useRef(false)
   const listScrollY = useRef(0)
 
-  const showToast = (message: string, type: ToastState['type'] = 'success') => {
-    setToast({ visible: true, message, type })
-    setTimeout(() => setToast((t) => ({ ...t, visible: false })), 2500)
-  }
-
-  const loadImagesProgressively = useCallback(async (bookList: Book[]) => {
-    const BATCH = 5
-    for (let i = 0; i < bookList.length; i += BATCH) {
-      const batch = bookList.slice(i, i + BATCH)
-      const entries = await Promise.all(batch.map(async (b) => {
-        const img = await getBookImage(b.id)
-        return img ? [b.id, img] as [string, string] : null
-      }))
-      const newImgs: Record<string, string> = {}
-      for (const e of entries) { if (e) newImgs[e[0]] = e[1] }
-      if (Object.keys(newImgs).length > 0) setImages((prev) => ({ ...prev, ...newImgs }))
-    }
-  }, [])
-
   const loadAll = useCallback(async () => {
     try {
       const [b, c, g, t] = await Promise.all([
         bookRepository.getAll(), caseRepository.getAll(),
         genreRepository.getAll(), tagRepository.getAll(),
       ])
-      setBooks(b); setAllMasters(c, g, t)
-      setImages({})
+      setAllMasters(c, g, t)
       setLoading(false)
-      await loadImagesProgressively(b)
+      await loadBooksAndImages(b)
     } catch (e) {
       console.error('Load failed:', e)
       setLoading(false)
     }
-  }, [loadImagesProgressively])
+  }, [setAllMasters, loadBooksAndImages])
 
   useEffect(() => {
     if (!initialLoadDone.current) {
@@ -88,70 +79,14 @@ export default function App() {
     }
   }, [loadAll])
 
-  // ── Book handlers ──────────────────────────────────────────
+  // ── Book handlers (wrapping useBooks with navigation) ──────
   const handleSaveBook = async (bookData: Book, imageData: string | null | undefined, continueAdding: boolean) => {
-    await bookRepository.save(bookData)
-    if (imageData !== undefined) {
-      if (imageData) await setBookImage(bookData.id, imageData)
-      else await deleteBookImage(bookData.id)
-    }
-    setBooks((prev) => {
-      const idx = prev.findIndex((b) => b.id === bookData.id)
-      if (idx >= 0) { const next = [...prev]; next[idx] = bookData; return next }
-      return [...prev, bookData]
-    })
-    if (imageData !== undefined) {
-      setImages((prev) => {
-        const next = { ...prev }
-        if (imageData) next[bookData.id] = imageData
-        else delete next[bookData.id]
-        return next
-      })
-    }
-    showToast('保存しました')
+    await saveBook(bookData, imageData)
     if (!continueAdding) setPage('list')
   }
-
   const handleDeleteBook = async (id: string) => {
-    await bookRepository.delete(id)
-    setBooks((prev) => prev.filter((b) => b.id !== id))
-    setImages((prev) => { const next = { ...prev }; delete next[id]; return next })
-    showToast('削除しました')
+    await deleteBook(id)
     setPage('list')
-  }
-
-  const handleBatchAddGenre = async (ids: string[], genreId: string) => {
-    const updated = books
-      .filter((b) => ids.includes(b.id) && !(b.genres ?? []).includes(genreId))
-      .map((b) => ({ ...b, genres: [...(b.genres ?? []), genreId], updatedAt: now() }))
-    if (updated.length === 0) { showToast('すでに全冊にジャンルが付いています'); return }
-    await Promise.all(updated.map((b) => bookRepository.save(b)))
-    const updatedMap = new Map(updated.map((b) => [b.id, b]))
-    setBooks((prev) => prev.map((b) => updatedMap.get(b.id) ?? b))
-    showToast(`${updated.length}冊にジャンルを追加しました`)
-  }
-
-  const handleBatchAddTag = async (ids: string[], tagId: string) => {
-    const updated = books
-      .filter((b) => ids.includes(b.id) && !(b.tags ?? []).includes(tagId))
-      .map((b) => ({ ...b, tags: [...(b.tags ?? []), tagId], updatedAt: now() }))
-    if (updated.length === 0) { showToast('すでに全冊にタグが付いています'); return }
-    await Promise.all(updated.map((b) => bookRepository.save(b)))
-    const updatedMap = new Map(updated.map((b) => [b.id, b]))
-    setBooks((prev) => prev.map((b) => updatedMap.get(b.id) ?? b))
-    showToast(`${updated.length}冊にタグを追加しました`)
-  }
-
-  const handleBatchDelete = async (ids: string[]) => {
-    await Promise.all(ids.map((id) => bookRepository.delete(id)))
-    const idSet = new Set(ids)
-    setBooks((prev) => prev.filter((b) => !idSet.has(b.id)))
-    setImages((prev) => {
-      const next = { ...prev }
-      for (const id of ids) delete next[id]
-      return next
-    })
-    showToast(`${ids.length}冊削除しました`)
   }
 
   // ── Master delete handlers (with book cleanup) ──────────────
@@ -159,15 +94,15 @@ export default function App() {
     await masters.handleDeleteCase(id)
     const affected = books.filter((b) => b.caseId === id).map((b) => ({ ...b, caseId: '' as string, updatedAt: now() }))
     await Promise.all(affected.map((b) => bookRepository.save(b)))
-    setBooks((prev) => prev.map((b) => b.caseId === id ? { ...b, caseId: '' } : b))
+    cleanupBookField('caseId', id, '')
   }
   const handleDeleteGenre = async (id: string) => {
     await masters.handleDeleteGenre(id)
-    setBooks((prev) => prev.map((b) => ({ ...b, genres: (b.genres ?? []).filter((gId) => gId !== id) })))
+    cleanupBookArrayField('genres', id)
   }
   const handleDeleteTag = async (id: string) => {
     await masters.handleDeleteTag(id)
-    setBooks((prev) => prev.map((b) => ({ ...b, tags: (b.tags ?? []).filter((tId) => tId !== id) })))
+    cleanupBookArrayField('tags', id)
   }
 
   // ── Export / Import ──────────────────────────────────────────
