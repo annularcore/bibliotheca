@@ -6,23 +6,23 @@ import { tagRepository } from './repositories/tagRepository'
 import { getBookImage, setBookImage, deleteBookImage, compressImage } from './utils/image'
 import { exportAsZip, importFile } from './utils/backup'
 import { generateId, now } from './utils/id'
+import { useMasters } from './hooks/useMasters'
 import { ListPage } from './pages/ListPage'
 import { DetailPage } from './pages/DetailPage'
 import { FormPage } from './pages/FormPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { Toast } from './components/Toast'
 import { theme } from './theme'
-import type { Book, Case, Genre, Tag, Page, SortKey, ViewMode, ToastState } from './types'
-
-const sortByName = <T extends { name: string }>(items: T[]): T[] =>
-  [...items].sort((a, b) => a.name.localeCompare(b.name, 'ja'))
+import type { Book, Page, SortKey, ViewMode, ToastState } from './types'
 
 export default function App() {
   const [page, setPage] = useState<Page>('list')
   const [books, setBooks] = useState<Book[]>([])
-  const [cases, setCases] = useState<Case[]>([])
-  const [genres, setGenres] = useState<Genre[]>([])
-  const [tags, setTags] = useState<Tag[]>([])
+  const masters = useMasters()
+  const { cases, genres, tags, setAllMasters,
+    handleAddCase, handleRenameCase,
+    handleAddGenre, handleRenameGenre,
+    handleAddTag, handleRenameTag } = masters
   const [images, setImages] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
   const [toast, setToast] = useState<ToastState>({ visible: false, message: '', type: 'success' })
@@ -70,7 +70,7 @@ export default function App() {
         bookRepository.getAll(), caseRepository.getAll(),
         genreRepository.getAll(), tagRepository.getAll(),
       ])
-      setBooks(b); setCases(sortByName(c)); setGenres(sortByName(g)); setTags(sortByName(t))
+      setBooks(b); setAllMasters(c, g, t)
       setImages({})
       setLoading(false)
       await loadImagesProgressively(b)
@@ -154,65 +154,19 @@ export default function App() {
     showToast(`${ids.length}冊削除しました`)
   }
 
-  // ── Case handlers ──────────────────────────────────────────
-  const handleAddCase = async (name: string): Promise<Case> => {
-    const item: Case = { id: generateId(), name, createdAt: now(), updatedAt: now() }
-    await caseRepository.save(item)
-    setCases((prev) => sortByName([...prev, item]))
-    return item
-  }
-  const handleRenameCase = async (id: string, name: string) => {
-    const item = cases.find((x) => x.id === id)
-    if (!item) return
-    const updated = { ...item, name, updatedAt: now() }
-    await caseRepository.save(updated)
-    setCases((prev) => sortByName(prev.map((x) => x.id === id ? updated : x)))
-  }
+  // ── Master delete handlers (with book cleanup) ──────────────
   const handleDeleteCase = async (id: string) => {
-    await caseRepository.delete(id)
-    setCases((prev) => prev.filter((x) => x.id !== id))
+    await masters.handleDeleteCase(id)
     const affected = books.filter((b) => b.caseId === id).map((b) => ({ ...b, caseId: '' as string, updatedAt: now() }))
     await Promise.all(affected.map((b) => bookRepository.save(b)))
     setBooks((prev) => prev.map((b) => b.caseId === id ? { ...b, caseId: '' } : b))
   }
-
-  // ── Genre handlers ──────────────────────────────────────────
-  const handleAddGenre = async (name: string): Promise<Genre> => {
-    const item: Genre = { id: generateId(), name, createdAt: now(), updatedAt: now() }
-    await genreRepository.save(item)
-    setGenres((prev) => sortByName([...prev, item]))
-    return item
-  }
-  const handleRenameGenre = async (id: string, name: string) => {
-    const item = genres.find((x) => x.id === id)
-    if (!item) return
-    const updated = { ...item, name, updatedAt: now() }
-    await genreRepository.save(updated)
-    setGenres((prev) => sortByName(prev.map((x) => x.id === id ? updated : x)))
-  }
   const handleDeleteGenre = async (id: string) => {
-    await genreRepository.delete(id)
-    setGenres((prev) => prev.filter((x) => x.id !== id))
+    await masters.handleDeleteGenre(id)
     setBooks((prev) => prev.map((b) => ({ ...b, genres: (b.genres ?? []).filter((gId) => gId !== id) })))
   }
-
-  // ── Tag handlers ──────────────────────────────────────────
-  const handleAddTag = async (name: string): Promise<Tag> => {
-    const item: Tag = { id: generateId(), name, createdAt: now(), updatedAt: now() }
-    await tagRepository.save(item)
-    setTags((prev) => sortByName([...prev, item]))
-    return item
-  }
-  const handleRenameTag = async (id: string, name: string) => {
-    const item = tags.find((x) => x.id === id)
-    if (!item) return
-    const updated = { ...item, name, updatedAt: now() }
-    await tagRepository.save(updated)
-    setTags((prev) => sortByName(prev.map((x) => x.id === id ? updated : x)))
-  }
   const handleDeleteTag = async (id: string) => {
-    await tagRepository.delete(id)
-    setTags((prev) => prev.filter((x) => x.id !== id))
+    await masters.handleDeleteTag(id)
     setBooks((prev) => prev.map((b) => ({ ...b, tags: (b.tags ?? []).filter((tId) => tId !== id) })))
   }
 
