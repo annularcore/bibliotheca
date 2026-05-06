@@ -243,6 +243,9 @@ export default function App() {
     try {
       const result = await importFile(file)
       await loadAll()
+      const exportedAt = new Date().toISOString()
+      localStorage.setItem('lastExportedAt', exportedAt)
+      setLastExportedAt(exportedAt)
       showToast(`インポート完了（書籍: +${result.books.added}, 更新${result.books.overwritten}件）`)
     } catch (e) {
       showToast('インポート失敗: ' + (e as Error).message, 'error')

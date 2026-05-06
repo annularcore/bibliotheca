@@ -87,7 +87,7 @@ export function SettingsPage({
               <Upload size={15} /> インポート
             </Btn>
             <input
-              type="file" accept=".zip,.json" ref={importRef} style={{ display: 'none' }}
+              type="file" accept=".zip,.json,application/zip,application/x-zip-compressed,application/json" ref={importRef} style={{ display: 'none' }}
               onChange={(e) => { const f = e.target.files?.[0]; if (f) onImport(f); e.target.value = '' }}
             />
           </div>
