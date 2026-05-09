@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "icons": "node scripts/gen-icons.mjs",
-    "deploy": "npm run build && gh-pages -d dist"
+    "deploy": "npm run build && gh-pages -d dist",
+    "deploy:personal": "npm run build && gh-pages -d dist -r https://github.com/annularcore/bibliotheca-personal.git"
   },
   "dependencies": {
     "dexie": "^4.4.2",
